@@ -38,18 +38,19 @@ public class AdPlanServiceImpl implements IAdPlanService {
     public AdPlanResponse createAdPlan(AdPlanRequest request)
             throws AdException {
 
+        // 基础参数校验：userId、planName、日期范围等
         if (!request.createValidate()) {
             throw new AdException(Constants.ErrorMsg.REQUEST_PARAM_ERROR);
         }
 
-        // 确保关联的 User 是存在的
+        // 确保关联的 User 是存在的，防止脏数据
         Optional<AdUser> adUser =
                 userRepository.findById(request.getUserId());
         if (!adUser.isPresent()) {
             throw new AdException(Constants.ErrorMsg.CAN_NOT_FIND_RECORD);
         }
 
-        // 查询之前是否已定义了同名的plan
+        // 查询之前是否已定义了同名的plan，避免重复
         AdPlan oldPlan = planRepository.findByUserIdAndPlanName(
                 request.getUserId(), request.getPlanName()
         );
@@ -57,6 +58,7 @@ public class AdPlanServiceImpl implements IAdPlanService {
             throw new AdException(Constants.ErrorMsg.SAME_NAME_PLAN_ERROR);
         }
 
+        // 创建并保存推广计划，日期字符串转换为 Date
         AdPlan newAdPlan = planRepository.save(
                 new AdPlan(request.getUserId(), request.getPlanName(),
                         CommonUtils.parseStringDate(request.getStartDate()),
@@ -86,17 +88,19 @@ public class AdPlanServiceImpl implements IAdPlanService {
     public AdPlanResponse updateAdPlan(AdPlanRequest request)
             throws AdException {
 
+        // 更新校验包含 id 和 userId
         if (!request.updateValidate()) {
             throw new AdException(Constants.ErrorMsg.REQUEST_PARAM_ERROR);
         }
 
+        // 根据用户维度查询，防止跨用户修改
         AdPlan plan = planRepository.findByIdAndUserId(
                 request.getId(), request.getUserId()
         );
         if (plan == null) {
             throw new AdException(Constants.ErrorMsg.CAN_NOT_FIND_RECORD);
         }
-        // 可以部分更新，如果planName == null 即不更新planName
+        // 支持部分字段更新：名称、开始/结束日期
         if (request.getPlanName() != null) {
             plan.setPlanName(request.getPlanName());
         }
@@ -126,6 +130,7 @@ public class AdPlanServiceImpl implements IAdPlanService {
             throw new AdException(Constants.ErrorMsg.REQUEST_PARAM_ERROR);
         }
 
+        // 软删除：仅更新状态与时间戳，不物理删除
         AdPlan plan = planRepository.findByIdAndUserId(
                 request.getId(), request.getUserId()
         );

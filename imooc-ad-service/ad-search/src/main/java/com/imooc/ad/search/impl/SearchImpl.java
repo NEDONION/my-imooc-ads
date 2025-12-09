@@ -38,6 +38,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SearchImpl implements ISearch {
 
+    // Hystrix 降级兜底，当前简单返回 null，便于上层快速感知失败
     public SearchResponse fallback(SearchRequest request, Throwable e) {
         return null;
     }
@@ -46,10 +47,10 @@ public class SearchImpl implements ISearch {
     @HystrixCommand(fallbackMethod = "fallback")
     public SearchResponse fetchAds(SearchRequest request) {
 
-        // 请求的广告位信息
+        // 请求的广告位信息（一个请求可以携带多个广告位）
         List<AdSlot> adSlots = request.getRequestInfo().getAdSlots();
 
-        // 三个 Feature
+        // 三个定向约束特征：关键词、地域、兴趣标签
         KeywordFeature keywordFeature =
                 request.getFeatureInfo().getKeywordFeature();
         DistrictFeature districtFeature =
@@ -59,7 +60,7 @@ public class SearchImpl implements ISearch {
 
         FeatureRelation relation = request.getFeatureInfo().getRelation();
 
-        // 构造响应对象
+        // 构造响应对象：key 为广告位 code，value 为返回的创意列表
         SearchResponse response = new SearchResponse();
         Map<String, List<SearchResponse.Creative>> adSlot2Ads =
                 response.getAdSlot2Ads();
@@ -68,7 +69,7 @@ public class SearchImpl implements ISearch {
 
             Set<Long> targetUnitIdSet;
 
-            // 根据流量类型获取初始 AdUnit
+            // 根据流量类型（positionType）获取初始 AdUnit 候选集合
             Set<Long> adUnitIdSet = DataTable.of(
                     AdUnitIndex.class
             ).match(adSlot.getPositionType());
@@ -93,8 +94,10 @@ public class SearchImpl implements ISearch {
             List<AdUnitObject> unitObjects =
                     DataTable.of(AdUnitIndex.class).fetch(targetUnitIdSet);
 
+            // 过滤掉计划或单元处于无效状态的数据
             filterAdUnitAndPlanStatus(unitObjects, CommonStatus.VALID);
 
+            // 创意映射：AdUnit -> CreativeId -> CreativeObject
             List<Long> adIds = DataTable.of(CreativeUnitIndex.class)
                     .selectAds(unitObjects);
             List<CreativeObject> creatives = DataTable.of(CreativeIndex.class)
@@ -108,6 +111,7 @@ public class SearchImpl implements ISearch {
                     adSlot.getType()
             );
 
+            // 每个广告位挑选一个创意（随机），填充响应
             adSlot2Ads.put(
                     adSlot.getAdSlotCode(), buildCreativeResponse(creatives)
             );
